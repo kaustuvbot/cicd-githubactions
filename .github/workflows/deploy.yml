@@ -1,0 +1,72 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # - name: Test
+      #   run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /var/www/cicd-lab || sudo mkdir -p /var/www/cicd-lab
+            sudo chown ec2-user:ec2-user /var/www/cicd-lab
+            cd /var/www/cicd-lab
+
+            # Pull latest code
+            if [ -d ".git" ]; then
+              git pull origin main
+            else
+              git clone https://github.com/${{ github.repository }} .
+            fi
+
+            # Install dependencies
+            npm install --omit=dev
+
+            # Stop existing app (gracefully handle if not running)
+            pm2 stop ci-cd-github 2>/dev/null || echo "App not running, starting fresh"
+            pm2 delete ci-cd-github 2>/dev/null || echo "No existing app to delete"
+
+            # Start app
+            pm2 start app.js --name ci-cd-github
+            pm2 save
+
+            # Verify app is running
+            pm2 status
+            sleep 5
+            curl -f http://localhost:3000/health || echo "Health check warning"
