@@ -3,7 +3,7 @@ const express = require('express');
 const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
-// var unusedVariable = "This will cause a lint error";  // LINT ERROR: unused variable
+var unusedVariable = "This will cause a lint error";  // LINT ERROR: unused variable
 
 // Serve static files
 app.use(express.static('public'));
